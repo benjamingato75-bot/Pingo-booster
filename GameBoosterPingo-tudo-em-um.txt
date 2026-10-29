@@ -1,0 +1,344 @@
+GAME BOOSTER PINGO - TODOS OS ARQUIVOS EM UM SO
+Cada bloco abaixo e um arquivo. Crie no GitHub com o caminho indicado e cole o conteudo.
+
+==================================================
+CAMINHO: .github/workflows/build.yml
+==================================================
+name: Gerar APK
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - run: gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GameBoosterPingo-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+
+==================================================
+CAMINHO: build.gradle.kts
+==================================================
+plugins {
+    id("com.android.application") version "8.5.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+}
+
+
+==================================================
+CAMINHO: settings.gradle.kts
+==================================================
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+rootProject.name = "GameBoosterPingo"
+include(":app")
+
+
+==================================================
+CAMINHO: gradle.properties
+==================================================
+org.gradle.jvmargs=-Xmx2g
+android.useAndroidX=true
+kotlin.code.style=official
+
+
+==================================================
+CAMINHO: app/build.gradle.kts
+==================================================
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+android {
+    namespace = "com.pingo.booster"
+    compileSdk = 34
+    defaultConfig {
+        applicationId = "com.pingo.booster"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0"
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+}
+
+
+==================================================
+CAMINHO: app/src/main/AndroidManifest.xml
+==================================================
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="Game Booster Pingo"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Painel flutuante de game booster" />
+        </service>
+    </application>
+</manifest>
+
+
+==================================================
+CAMINHO: app/src/main/java/com/pingo/booster/MainActivity.kt
+==================================================
+package com.pingo.booster
+
+import android.Manifest
+import android.app.Activity
+import android.app.NotificationManager
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import android.view.Gravity
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+
+class MainActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val pad = (20 * resources.displayMetrics.density).toInt()
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad * 2, pad, pad)
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        root.addView(TextView(this).apply {
+            text = "Game Booster Pingo"; textSize = 26f; gravity = Gravity.CENTER
+        })
+        root.addView(TextView(this).apply {
+            text = "1) Libere as permissões  2) Ligue o painel  3) Abra seu jogo e arraste a borda esquerda da tela para a direita."
+            setPadding(0, pad, 0, pad)
+        })
+        fun botao(txt: String, acao: () -> Unit) = root.addView(Button(this).apply { text = txt; setOnClickListener { acao() } })
+
+        botao("1. Permitir exibir sobre outros apps") {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        }
+        botao("2. Permitir Não Perturbe (modo jogo)") {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+        }
+        botao("3. LIGAR painel do game booster") {
+            if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "Faça o passo 1 primeiro", Toast.LENGTH_LONG).show()
+            } else {
+                startForegroundService(Intent(this, OverlayService::class.java))
+                Toast.makeText(this, "Painel ligado! Abra seu jogo.", Toast.LENGTH_LONG).show()
+            }
+        }
+        botao("DESLIGAR painel") { stopService(Intent(this, OverlayService::class.java)) }
+        setContentView(root)
+    }
+}
+
+
+==================================================
+CAMINHO: app/src/main/java/com/pingo/booster/OverlayService.kt
+==================================================
+package com.pingo.booster
+
+import android.app.ActivityManager
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.os.IBinder
+import android.provider.Settings
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+
+class OverlayService : Service() {
+    private lateinit var wm: WindowManager
+    private var handle: View? = null
+    private var panel: LinearLayout? = null
+    private var infoRam: TextView? = null
+    private var botaoModo: Button? = null
+    private var modoJogo = false
+
+    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        iniciarNotificacao()
+        criarAlca()
+    }
+
+    private fun iniciarNotificacao() {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("booster", "Game Booster", NotificationManager.IMPORTANCE_LOW))
+        val n = Notification.Builder(this, "booster")
+            .setContentTitle("Game Booster Pingo ligado")
+            .setContentText("Arraste a borda esquerda da tela para abrir o painel")
+            .setSmallIcon(android.R.drawable.ic_menu_manage)
+            .build()
+        if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        else startForeground(1, n)
+    }
+
+    private fun tipoJanela() = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+
+    // Alça fininha na borda esquerda: arraste para a direita para abrir o painel
+    private fun criarAlca() {
+        val v = View(this).apply {
+            background = GradientDrawable().apply { setColor(Color.argb(90, 255, 255, 255)); cornerRadius = dp(6).toFloat() }
+        }
+        val lp = WindowManager.LayoutParams(
+            dp(18), dp(220), tipoJanela(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL }
+        var downX = 0f
+        v.setOnTouchListener { _, e ->
+            when (e.action) {
+                MotionEvent.ACTION_DOWN -> downX = e.rawX
+                MotionEvent.ACTION_MOVE -> if (e.rawX - downX > dp(40)) { mostrarPainel(); downX = Float.MAX_VALUE }
+            }
+            true
+        }
+        wm.addView(v, lp)
+        handle = v
+    }
+
+    private fun botao(txt: String, acao: (Button) -> Unit): Button = Button(this).apply {
+        text = txt; setOnClickListener { acao(this) }
+    }
+
+    private fun mostrarPainel() {
+        if (panel != null) return
+        val p = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            background = GradientDrawable().apply { setColor(Color.argb(235, 25, 25, 35)); cornerRadius = dp(16).toFloat() }
+        }
+        p.addView(TextView(this).apply { text = "GAME BOOSTER"; setTextColor(Color.WHITE); textSize = 18f })
+        infoRam = TextView(this).apply { setTextColor(Color.LTGRAY); setPadding(0, dp(6), 0, dp(6)) }
+        p.addView(infoRam)
+        botaoModo = botao("Modo jogo: DESLIGADO") { alternarModoJogo() }
+        p.addView(botaoModo)
+        p.addView(botao("Limpar RAM") { limparRam() })
+        p.addView(botao("Economia de bateria (desligar)") { abrirTela(Settings.ACTION_BATTERY_SAVER_SETTINGS) })
+        p.addView(botao("Fechar painel") { esconderPainel() })
+        atualizarRam()
+
+        val lp = WindowManager.LayoutParams(
+            dp(250), WindowManager.LayoutParams.WRAP_CONTENT, tipoJanela(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.START or Gravity.CENTER_VERTICAL; x = dp(8) }
+        p.setOnTouchListener { _, e -> if (e.action == MotionEvent.ACTION_OUTSIDE) esconderPainel(); false }
+        wm.addView(p, lp)
+        panel = p
+    }
+
+    private fun esconderPainel() { panel?.let { wm.removeView(it) }; panel = null }
+
+    private fun abrirTela(acao: String) {
+        try { startActivity(Intent(acao).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+        esconderPainel()
+    }
+
+    private fun atualizarRam() {
+        val am = getSystemService(ActivityManager::class.java)
+        val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+        infoRam?.text = "RAM livre: ${mi.availMem / 1048576} MB de ${mi.totalMem / 1048576} MB"
+    }
+
+    // Modo jogo = liga o Não Perturbe (sem notificações/chamadas atrapalhando) + limpa RAM
+    private fun alternarModoJogo() {
+        val nm = getSystemService(NotificationManager::class.java)
+        if (!nm.isNotificationPolicyAccessGranted) {
+            Toast.makeText(this, "Permita o Não Perturbe no app (passo 2)", Toast.LENGTH_LONG).show()
+            return
+        }
+        modoJogo = !modoJogo
+        nm.setInterruptionFilter(
+            if (modoJogo) NotificationManager.INTERRUPTION_FILTER_NONE else NotificationManager.INTERRUPTION_FILTER_ALL
+        )
+        if (modoJogo) limparRam()
+        botaoModo?.text = "Modo jogo: " + if (modoJogo) "LIGADO" else "DESLIGADO"
+    }
+
+    // Pede ao Android para encerrar processos em segundo plano dos outros apps
+    private fun limparRam() {
+        val am = getSystemService(ActivityManager::class.java)
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val pacotes = packageManager.queryIntentActivities(launcher, 0)
+            .map { it.activityInfo.packageName }.distinct().filter { it != packageName }
+        val antes = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }.availMem
+        pacotes.forEach { try { am.killBackgroundProcesses(it) } catch (_: Exception) {} }
+        Thread.sleep(400)
+        val depois = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }.availMem
+        atualizarRam()
+        val liberado = (depois - antes) / 1048576
+        Toast.makeText(this, "RAM liberada: ${if (liberado > 0) liberado else 0} MB", Toast.LENGTH_SHORT).show()
+    }
+
+    override fun onDestroy() {
+        esconderPainel()
+        handle?.let { wm.removeView(it) }
+        super.onDestroy()
+    }
+}
+
+
